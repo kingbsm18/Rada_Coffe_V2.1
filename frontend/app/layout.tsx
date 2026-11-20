@@ -2,10 +2,13 @@ import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import './operations.css'
+import './portals.css'
+import { PortalDevelopmentProvider } from '@/components/portals/development-data-provider'
+import { AuthProvider } from '@/services/auth-context'
 
 export const metadata: Metadata = {
-  title: 'RADA Coffee | Operations Intelligence',
-  description: 'AI-powered restaurant operations, camera intelligence, and POS reconciliation command center.',
+  title: 'RADA Coffee | Control & Business',
+  description: 'Separate internal platform operations and customer business intelligence portals for RADA Coffee.',
   generator: 'v0.app',
   icons: {
     icon: [
@@ -31,7 +34,7 @@ export const viewport: Viewport = {
   themeColor: '#090D16',
   width: 'device-width',
   initialScale: 1,
-  userScalable: false,
+  userScalable: true,
 }
 
 export default function RootLayout({
@@ -42,7 +45,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        {children}
+        <AuthProvider><PortalDevelopmentProvider>{children}</PortalDevelopmentProvider></AuthProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
