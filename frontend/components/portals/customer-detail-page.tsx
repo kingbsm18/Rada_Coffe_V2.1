@@ -7,6 +7,8 @@ import { ArrowLeft, ExternalLink, Plus, Save, Trash2, UserPlus } from 'lucide-re
 import { usePortalData } from '@/services/portal-data'
 import type { BusinessCamera, OnboardingConfig, Site, Tenant, TenantUser } from '@/services/development-data'
 import { isDemoProvider } from '@/services/config'
+import { signOutOfPortal } from '@/services/portal-auth'
+import { usePortalSession } from '@/services/portal-session'
 import { DataConnectionNotice } from './data-connection-notice'
 import { useControlWorkspace } from '@/services/portal-hooks'
 
@@ -20,9 +22,11 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
   const router = useRouter()
   const { tenants, users, cameras, updateCustomer, deleteCustomer, setCustomerStatus, addEstablishment, updateEstablishment, deleteEstablishment, addCustomerUser, updateCustomerUser, addCamera, updateCamera, deleteCamera } = usePortalData()
   const development = isDemoProvider()
+  const { session: businessSession } = usePortalSession('business')
   const { data: workspace, error } = useControlWorkspace()
   const tenant = development ? tenants.find((item) => item.id === customerId) : workspace?.customers.find((item) => item.id === customerId)
-  const members = users.filter((user) => user.tenantId === customerId)
+  const memberRecords = development ? users : workspace?.users ?? []
+  const members = memberRecords.filter((user) => user.tenantId === customerId)
   const [form, setForm] = useState<TenantForm | null>(tenant ? toForm(tenant) : null)
   const [siteEdits, setSiteEdits] = useState<Record<string, Partial<Site>>>({})
   const [siteDraft, setSiteDraft] = useState({ name: '', address: '', timezone: 'America/Toronto', hours: '07:00–21:00' })
@@ -97,10 +101,15 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
     window.location.assign('/business/dashboard')
   }
 
-  function removeCustomer() {
+  async function removeCustomer() {
     const currentTenant = tenant
     if (!currentTenant || !window.confirm(`Delete ${currentTenant.name}? This also removes its users, cameras, events and snapshot data from local development storage.`)) return
-    if (development) deleteCustomer(customerId)
+    if (development) {
+      deleteCustomer(customerId)
+      if (businessSession?.portal === 'business' && businessSession.user.tenantId === customerId) {
+        try { await signOutOfPortal('business') } catch { /* The removed tenant cannot access customer data even if its demo cookie is stale. */ }
+      }
+    }
     router.push('/control/customers')
   }
 

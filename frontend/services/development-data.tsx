@@ -168,6 +168,15 @@ const STORAGE_KEY = 'rada-development-data-v1'
 
 type StoredDevelopmentData = { version: 1; tenants: Tenant[]; users: TenantUser[]; cameras: BusinessCamera[]; events: BusinessEvent[]; snapshots: BusinessSnapshot[] }
 
+function parseStoredDevelopmentData(value: string | null): StoredDevelopmentData | null {
+  if (!value) return null
+  try {
+    const parsed = JSON.parse(value) as Partial<StoredDevelopmentData>
+    if (parsed.version === 1 && Array.isArray(parsed.tenants) && Array.isArray(parsed.users) && Array.isArray(parsed.cameras) && Array.isArray(parsed.events) && Array.isArray(parsed.snapshots)) return parsed as StoredDevelopmentData
+  } catch { /* Invalid local data is ignored and the development seed remains available. */ }
+  return null
+}
+
 export function DevelopmentDataProvider({ children }: { children: React.ReactNode }) {
   const demo = isDemoProvider()
   const [tenants, setTenants] = useState<Tenant[]>(demo ? developmentTenants : [])
@@ -183,22 +192,35 @@ export function DevelopmentDataProvider({ children }: { children: React.ReactNod
   useEffect(() => {
     if (!demo) { setHydrated(true); return }
     try {
-      const saved = window.localStorage.getItem(STORAGE_KEY)
-      if (saved) {
-        const parsed = JSON.parse(saved) as Partial<StoredDevelopmentData>
-        if (parsed.version === 1 && Array.isArray(parsed.tenants) && Array.isArray(parsed.users) && Array.isArray(parsed.cameras) && Array.isArray(parsed.events) && Array.isArray(parsed.snapshots)) {
-          setTenants(parsed.tenants)
-          setUsers(parsed.users)
-          setCameras(parsed.cameras)
-          setEvents(parsed.events)
-          setSnapshots(parsed.snapshots)
-        }
+      const stored = parseStoredDevelopmentData(window.localStorage.getItem(STORAGE_KEY))
+      if (stored) {
+        setTenants(stored.tenants)
+        setUsers(stored.users)
+        setCameras(stored.cameras)
+        setEvents(stored.events)
+        setSnapshots(stored.snapshots)
+      } else if (window.localStorage.getItem(STORAGE_KEY)) {
+        window.localStorage.removeItem(STORAGE_KEY)
       }
-    } catch {
-      try { window.localStorage.removeItem(STORAGE_KEY) } catch { /* Storage may be unavailable in a restricted browser context. */ }
-    } finally {
+    } catch { /* Storage may be unavailable in a restricted browser context. */ } finally {
       setHydrated(true)
     }
+  }, [demo])
+
+  useEffect(() => {
+    if (!demo) return
+    function synchronizeAcrossTabs(event: StorageEvent) {
+      if (event.key !== STORAGE_KEY || !event.newValue) return
+      const stored = parseStoredDevelopmentData(event.newValue)
+      if (!stored) return
+      setTenants(stored.tenants)
+      setUsers(stored.users)
+      setCameras(stored.cameras)
+      setEvents(stored.events)
+      setSnapshots(stored.snapshots)
+    }
+    window.addEventListener('storage', synchronizeAcrossTabs)
+    return () => window.removeEventListener('storage', synchronizeAcrossTabs)
   }, [demo])
 
   useEffect(() => {

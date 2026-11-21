@@ -2,9 +2,9 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
-import { Activity, AlertCircle, BarChart3, Building2, Camera, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, ClipboardList, Coffee, Cpu, FileClock, Gauge, LayoutDashboard, LifeBuoy, Network, Settings2, Shield, Users, Boxes, Store, Bell, ArrowUpRight, LogOut, LockKeyhole } from 'lucide-react'
+import { Activity, AlertCircle, BarChart3, Building2, Camera, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, ClipboardList, Coffee, Cpu, FileClock, Gauge, LayoutDashboard, LifeBuoy, Network, Settings2, Shield, Users, Boxes, Store, Bell, ArrowUpRight, LogOut, LockKeyhole, Menu, X } from 'lucide-react'
 import { usePortalData, roleCanAccess } from '@/services/portal-data'
 import { isDemoProvider } from '@/services/config'
 import { signOutOfPortal } from '@/services/portal-auth'
@@ -69,9 +69,43 @@ function DevelopmentBadge() {
   return isDemoProvider() ? <span className="development-badge"><i /><span><strong>DEVELOPMENT ENVIRONMENT</strong><small>LOCAL DATA · API NOT CONNECTED</small></span></span> : null
 }
 
+function useMobileNavigation(pathname: string) {
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const sidebarRef = useRef<HTMLElement>(null)
+  useEffect(() => { setMobileOpen(false) }, [pathname])
+  useEffect(() => {
+    if (!mobileOpen) return
+    const focusable = () => Array.from(sidebarRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])') ?? [])
+    focusable().find((element) => element.closest('nav'))?.focus()
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setMobileOpen(false)
+        menuButtonRef.current?.focus()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const elements = focusable()
+      const first = elements[0]
+      const last = elements.at(-1)
+      if (!first || !last) return
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [mobileOpen])
+  function closeMobileNavigation(restoreFocus = false) {
+    setMobileOpen(false)
+    if (restoreFocus) menuButtonRef.current?.focus()
+  }
+  return { mobileOpen, setMobileOpen, menuButtonRef, sidebarRef, closeMobileNavigation }
+}
+
 export function ControlShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
+  const { mobileOpen, setMobileOpen, menuButtonRef, sidebarRef, closeMobileNavigation } = useMobileNavigation(pathname)
   const section = pathname.split('/').filter(Boolean).at(-1) ?? 'dashboard'
   const title = pathname.startsWith('/control/customers/') && section !== 'new' ? 'Customer details' : titles[section] ?? 'RADA Control'
   const { session, isLoading } = usePortalSession('control')
@@ -89,16 +123,18 @@ export function ControlShell({ children }: { children: React.ReactNode }) {
 
   return <div className="portal-frame control-frame">
     <a className="portal-skip" href="#portal-main">Skip to main content</a>
-    <aside className="portal-sidebar control-sidebar">
+    <aside ref={sidebarRef} className={`portal-sidebar control-sidebar ${mobileOpen ? 'mobile-open' : ''}`} id="control-navigation">
+      <button className="portal-sidebar-close" type="button" aria-label="Close navigation" onClick={() => closeMobileNavigation(true)}><X /></button>
       <PortalBrand />
       <div className="control-scope"><span className="scope-glyph"><Shield size={16} /></span><span><strong>Platform scope</strong><small>All customer tenants</small></span><ChevronDown size={14} /></div>
       <nav className="portal-nav" aria-label="RADA Control navigation">
-        {controlNavigation.map((group) => <section className="portal-nav-group" key={group.group}><h2>{group.group}</h2>{group.items.map(({ label, href, icon: Icon }) => <Link className={`portal-nav-link ${activePath(pathname, href) ? 'is-active' : ''}`} href={href} key={href} aria-label={label} title={label} aria-current={activePath(pathname, href) ? 'page' : undefined}><Icon aria-hidden="true" /><span>{label}</span>{label === 'Alerts & incidents' && controlOpenAlertCount > 0 && <b className="nav-count-control">{controlOpenAlertCount}</b>}</Link>)}</section>)}
+        {controlNavigation.map((group) => <section className="portal-nav-group" key={group.group}><h2>{group.group}</h2>{group.items.map(({ label, href, icon: Icon }) => <Link className={`portal-nav-link ${activePath(pathname, href) ? 'is-active' : ''}`} href={href} key={href} aria-label={label} title={label} aria-current={activePath(pathname, href) ? 'page' : undefined} onClick={() => setMobileOpen(false)}><Icon aria-hidden="true" /><span>{label}</span>{label === 'Alerts & incidents' && controlOpenAlertCount > 0 && <b className="nav-count-control">{controlOpenAlertCount}</b>}</Link>)}</section>)}
       </nav>
       <div className="portal-sidebar-foot"><div className="staff-avatar">{accountName.split(' ').map((part) => part[0]).slice(0, 2).join('')}</div><span><strong>{accountName}</strong><small>{accountRole}</small></span></div>
     </aside>
     <div className="portal-main-column">
-      <header className="portal-topbar control-topbar"><div className="portal-breadcrumb"><span>RADA CONTROL</span><ChevronRight /><strong>{title}</strong></div><div className="portal-top-actions"><DevelopmentBadge /><details className="portal-account-menu"><summary aria-label="Open RADA Control account menu"><span>{accountName.split(' ').map((part) => part[0]).slice(0, 2).join('')}</span><strong>{accountName}</strong><ChevronDown /></summary><div className="portal-account-popover"><strong>{accountName}</strong><small>{accountRole}</small><button onClick={logout}><LogOut /> Sign out</button></div></details></div></header>
+      {mobileOpen && <button className="portal-sidebar-overlay" type="button" aria-label="Close navigation" onClick={() => closeMobileNavigation(true)} />}
+      <header className="portal-topbar control-topbar"><button ref={menuButtonRef} className="portal-mobile-menu" type="button" aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={mobileOpen} aria-controls="control-navigation" onClick={() => setMobileOpen((open) => !open)}>{mobileOpen ? <X /> : <Menu />}</button><div className="portal-breadcrumb"><span>RADA CONTROL</span><ChevronRight /><strong>{title}</strong></div><div className="portal-top-actions"><DevelopmentBadge /><details className="portal-account-menu"><summary aria-label="Open RADA Control account menu"><span>{accountName.split(' ').map((part) => part[0]).slice(0, 2).join('')}</span><strong>{accountName}</strong><ChevronDown /></summary><div className="portal-account-popover"><strong>{accountName}</strong><small>{accountRole}</small><button onClick={logout}><LogOut /> Sign out</button></div></details></div></header>
       <main className="portal-main" id="portal-main">{children}</main>
     </div>
   </div>
@@ -107,6 +143,7 @@ export function ControlShell({ children }: { children: React.ReactNode }) {
 export function BusinessShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
+  const { mobileOpen, setMobileOpen, menuButtonRef, sidebarRef, closeMobileNavigation } = useMobileNavigation(pathname)
   const section = pathname.split('/').filter(Boolean).at(-1) ?? 'dashboard'
   const title = titles[section] ?? 'Business overview'
   const development = isDemoProvider()
@@ -134,21 +171,24 @@ export function BusinessShell({ children }: { children: React.ReactNode }) {
     router.push('/business/login')
   }
 
-  if (development && (isLoading || !session || !tenant || session.portal !== 'business' || session.user.role === 'SUPER_ADMIN')) return <div className="portal-auth-check" role="status">Verifying customer workspace access…</div>
+  if (development && (isLoading || !session || session.portal !== 'business' || session.user.role === 'SUPER_ADMIN')) return <div className="portal-auth-check" role="status">Verifying customer workspace access…</div>
   const accountName = development ? session?.user.name ?? 'Business user' : workspace?.user ? `${workspace.user.firstName} ${workspace.user.lastName}` : 'Business user'
   const accountRole = development ? session?.user.role ?? 'Customer' : workspace?.user.role ?? 'Customer'
+  if (development && !isLoading && session?.portal === 'business' && !tenant) return <main className="portal-auth-check inactive-workspace" role="alert"><div><strong>This customer workspace is no longer available</strong><p>The customer record has been removed from local development data. Sign out to continue.</p><button className="business-outline-action" onClick={() => void logout()}>Sign out</button></div></main>
+  if (development && tenant?.status === 'Inactive') return <main className="portal-auth-check inactive-workspace" role="alert"><div><strong>This customer workspace is inactive</strong><p>RADA has deactivated access to {tenant.name}. Contact your administrator if you need access restored.</p><button className="business-outline-action" onClick={() => void logout()}>Sign out</button></div></main>
 
   return <div className="portal-frame business-frame">
     <a className="portal-skip" href="#portal-main">Skip to main content</a>
-    <aside className="portal-sidebar business-sidebar">
+    <aside ref={sidebarRef} className={`portal-sidebar business-sidebar ${mobileOpen ? 'mobile-open' : ''}`} id="business-navigation">
+      <button className="portal-sidebar-close" type="button" aria-label="Close navigation" onClick={() => closeMobileNavigation(true)}><X /></button>
       <PortalBrand business />
       <div className="business-workspace-label">YOUR WORKSPACE</div>
-      <nav className="portal-nav business-nav" aria-label="RADA Coffee Business navigation">{visibleNavigation.map(({ label, href, icon: Icon }) => <Link className={`portal-nav-link ${activePath(pathname, href) ? 'is-active' : ''}`} href={href} key={href} aria-label={label} title={label} aria-current={activePath(pathname, href) ? 'page' : undefined}><Icon aria-hidden="true" /><span>{label}</span>{label === 'Alerts' && notificationCount > 0 && <b className="nav-count-business">{notificationCount}</b>}</Link>)}</nav>
+      <nav className="portal-nav business-nav" aria-label="RADA Coffee Business navigation">{visibleNavigation.map(({ label, href, icon: Icon }) => <Link className={`portal-nav-link ${activePath(pathname, href) ? 'is-active' : ''}`} href={href} key={href} aria-label={label} title={label} aria-current={activePath(pathname, href) ? 'page' : undefined} onClick={() => setMobileOpen(false)}><Icon aria-hidden="true" /><span>{label}</span>{label === 'Alerts' && notificationCount > 0 && <b className="nav-count-business">{notificationCount}</b>}</Link>)}</nav>
       <div className="business-help"><div className="help-icon"><CircleHelp /></div><div><strong>Need a hand?</strong><small>Our team is here to help.</small></div><Link href="mailto:support@radacoffee.example" aria-label="Contact RADA support"><ArrowUpRight /></Link></div>
       <div className="portal-sidebar-foot"><div className="staff-avatar business-avatar">{accountName.split(' ').map((part) => part[0]).slice(0, 2).join('')}</div><span><strong>{accountName}</strong><small>{accountRole} account</small></span></div>
     </aside>
     <div className="portal-main-column">
-      <header className="portal-topbar business-topbar"><div className="business-context-controls"><span className="business-tenant-label"><Building2 />{tenant?.name ?? 'Business workspace'}</span><label className="context-select site-select"><Store /><span className="sr-only">Filter by establishment</span><select aria-label="Filter by establishment" value={activeSiteId} onChange={(event) => setActiveSiteId(event.target.value)}><option value="all">All establishments</option>{userSites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select><ChevronDown /></label></div><div className="portal-top-actions"><DevelopmentBadge /><button className="top-icon-button" aria-label={`Notifications${notificationCount ? `, ${notificationCount} open items` : ''}`} onClick={() => router.push('/business/alerts')}><Bell />{notificationCount > 0 && <span />}</button><details className="portal-account-menu"><summary aria-label="Open business account menu"><span>{accountName.split(' ').map((part) => part[0]).slice(0, 2).join('')}</span><strong>{accountName}</strong><ChevronDown /></summary><div className="portal-account-popover"><strong>{accountName}</strong><small>{accountRole} account</small><button onClick={logout}><LogOut /> Sign out</button></div></details></div></header>
+      {mobileOpen && <button className="portal-sidebar-overlay" type="button" aria-label="Close navigation" onClick={() => closeMobileNavigation(true)} />}<header className="portal-topbar business-topbar"><button ref={menuButtonRef} className="portal-mobile-menu" type="button" aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={mobileOpen} aria-controls="business-navigation" onClick={() => setMobileOpen((open) => !open)}>{mobileOpen ? <X /> : <Menu />}</button><div className="business-context-controls"><span className="business-tenant-label"><Building2 />{tenant?.name ?? 'Business workspace'}</span><label className="context-select site-select"><Store /><span className="sr-only">Filter by establishment</span><select aria-label="Filter by establishment" value={activeSiteId} onChange={(event) => setActiveSiteId(event.target.value)}><option value="all">All establishments</option>{userSites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select><ChevronDown /></label></div><div className="portal-top-actions"><DevelopmentBadge /><button className="top-icon-button" aria-label={`Notifications${notificationCount ? `, ${notificationCount} open item${notificationCount === 1 ? '' : 's'}` : ''}`} onClick={() => router.push('/business/alerts')}><Bell />{notificationCount > 0 && <span />}</button><details className="portal-account-menu"><summary aria-label="Open business account menu"><span>{accountName.split(' ').map((part) => part[0]).slice(0, 2).join('')}</span><strong>{accountName}</strong><ChevronDown /></summary><div className="portal-account-popover"><strong>{accountName}</strong><small>{accountRole} account</small><button onClick={logout}><LogOut /> Sign out</button></div></details></div></header>
       <main className="portal-main" id="portal-main">{children}</main>
     </div>
   </div>
