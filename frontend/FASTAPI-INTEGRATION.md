@@ -42,7 +42,7 @@ Analytics responses should identify the tenant/site scope and aggregation period
 
 ## Contract validation before cutover
 
-1. Compare the shipped OpenAPI schema with `types/domain.ts`, `types/operations.ts`, and service adapter DTOs.
+1. Compare the shipped schema with `types/domain.ts`, `types/operations.ts`, and service adapter DTOs.
 2. Map backend naming/envelopes once in API adapters, not in React components.
 3. Verify tenant isolation and role enforcement server-side, including exports and camera stream resolution.
 4. Exercise loading, empty, validation, expired-session, forbidden, unavailable, timeout, and cancellation states against a staging API.
