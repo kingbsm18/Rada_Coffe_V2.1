@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import useSWR from 'swr'
 import { Activity, AlertCircle, BarChart3, Building2, Camera, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, ClipboardList, Coffee, Cpu, FileClock, Gauge, LayoutDashboard, LifeBuoy, Network, Settings2, Shield, Users, Boxes, Store, Bell, ArrowUpRight, LogOut, LockKeyhole } from 'lucide-react'
 import { usePortalData, roleCanAccess } from '@/services/portal-data'
 import { isDemoProvider } from '@/services/config'
 import { signOutOfPortal } from '@/services/portal-auth'
 import { fetchBusinessWorkspace } from '@/services/business-api'
+import { usePortalSession } from '@/services/portal-session'
 
 type NavItem = { label: string; href: string; icon: typeof LayoutDashboard }
 
@@ -65,18 +66,26 @@ function PortalBrand({ business = false }: { business?: boolean }) {
 }
 
 function DevelopmentBadge() {
-  return isDemoProvider() ? <span className="development-badge"><i /> DEVELOPMENT</span> : null
+  return isDemoProvider() ? <span className="development-badge"><i /><span><strong>DEVELOPMENT ENVIRONMENT</strong><small>LOCAL DATA · API NOT CONNECTED</small></span></span> : null
 }
 
 export function ControlShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const section = pathname.split('/').filter(Boolean).at(-1) ?? 'dashboard'
-  const title = titles[section] ?? 'RADA Control'
+  const title = pathname.startsWith('/control/customers/') && section !== 'new' ? 'Customer details' : titles[section] ?? 'RADA Control'
+  const { session, isLoading } = usePortalSession('control')
+  const { events: controlEvents } = usePortalData()
+  const controlOpenAlertCount = controlEvents.filter((event) => event.status !== 'Resolved').length
+  useEffect(() => { if (isDemoProvider() && !isLoading && !session) router.replace('/control/login') }, [isLoading, router, session])
   async function logout() {
     try { await signOutOfPortal('control') } catch { /* Session cookies are invalidated by the auth service when available. */ }
     router.push('/control/login')
   }
+
+  if (isDemoProvider() && (isLoading || !session || (session.user.role !== 'SUPER_ADMIN' && !session.user.role.startsWith('RADA_')))) return <div className="portal-auth-check" role="status">Verifying RADA Control access…</div>
+  const accountName = session?.user.name ?? 'RADA team member'
+  const accountRole = session?.user.role ?? 'Internal account'
 
   return <div className="portal-frame control-frame">
     <a className="portal-skip" href="#portal-main">Skip to main content</a>
@@ -84,12 +93,12 @@ export function ControlShell({ children }: { children: React.ReactNode }) {
       <PortalBrand />
       <div className="control-scope"><span className="scope-glyph"><Shield size={16} /></span><span><strong>Platform scope</strong><small>All customer tenants</small></span><ChevronDown size={14} /></div>
       <nav className="portal-nav" aria-label="RADA Control navigation">
-        {controlNavigation.map((group) => <section className="portal-nav-group" key={group.group}><h2>{group.group}</h2>{group.items.map(({ label, href, icon: Icon }) => <Link className={`portal-nav-link ${activePath(pathname, href) ? 'is-active' : ''}`} href={href} key={href} aria-label={label} aria-current={activePath(pathname, href) ? 'page' : undefined}><Icon aria-hidden="true" /><span>{label}</span>{label === 'Alerts & incidents' && <b className="nav-count-control">3</b>}</Link>)}</section>)}
+        {controlNavigation.map((group) => <section className="portal-nav-group" key={group.group}><h2>{group.group}</h2>{group.items.map(({ label, href, icon: Icon }) => <Link className={`portal-nav-link ${activePath(pathname, href) ? 'is-active' : ''}`} href={href} key={href} aria-label={label} title={label} aria-current={activePath(pathname, href) ? 'page' : undefined}><Icon aria-hidden="true" /><span>{label}</span>{label === 'Alerts & incidents' && controlOpenAlertCount > 0 && <b className="nav-count-control">{controlOpenAlertCount}</b>}</Link>)}</section>)}
       </nav>
-      <div className="portal-sidebar-foot"><div className="staff-avatar">{process.env.NODE_ENV === 'production' ? 'RA' : 'AM'}</div><span><strong>{process.env.NODE_ENV === 'production' ? 'RADA team member' : 'Alex Morgan'}</strong><small>{process.env.NODE_ENV === 'production' ? 'Internal account' : 'Development administrator'}</small></span><button className="sidebar-logout" onClick={logout} aria-label="Sign out of RADA Control"><LogOut /></button></div>
+      <div className="portal-sidebar-foot"><div className="staff-avatar">{accountName.split(' ').map((part) => part[0]).slice(0, 2).join('')}</div><span><strong>{accountName}</strong><small>{accountRole}</small></span></div>
     </aside>
     <div className="portal-main-column">
-      <header className="portal-topbar control-topbar"><div className="portal-breadcrumb"><span>RADA CONTROL</span><ChevronRight /><strong>{title}</strong></div><div className="portal-top-actions"><DevelopmentBadge /><span className="control-system-state"><i /> API not connected</span>{isDemoProvider() && <Link className="portal-switch" href="/business/dashboard"><Store /> Business preview <ArrowUpRight /></Link>}</div></header>
+      <header className="portal-topbar control-topbar"><div className="portal-breadcrumb"><span>RADA CONTROL</span><ChevronRight /><strong>{title}</strong></div><div className="portal-top-actions"><DevelopmentBadge /><details className="portal-account-menu"><summary aria-label="Open RADA Control account menu"><span>{accountName.split(' ').map((part) => part[0]).slice(0, 2).join('')}</span><strong>{accountName}</strong><ChevronDown /></summary><div className="portal-account-popover"><strong>{accountName}</strong><small>{accountRole}</small><button onClick={logout}><LogOut /> Sign out</button></div></details></div></header>
       <main className="portal-main" id="portal-main">{children}</main>
     </div>
   </div>
@@ -101,32 +110,45 @@ export function BusinessShell({ children }: { children: React.ReactNode }) {
   const section = pathname.split('/').filter(Boolean).at(-1) ?? 'dashboard'
   const title = titles[section] ?? 'Business overview'
   const development = isDemoProvider()
-  const { tenants, users, activeTenantId, activeSiteId, selectedUserId, setActiveTenantId, setActiveSiteId, setSelectedUserId } = usePortalData()
+  const { session, isLoading } = usePortalSession('business')
+  useEffect(() => { if (development && !isLoading && !session) router.replace('/business/login') }, [development, isLoading, router, session])
+  const { tenants, users, events, activeSiteId, setActiveSiteId } = usePortalData()
   const { data: workspace } = useSWR(development ? null : '/v1/business/workspace', () => fetchBusinessWorkspace())
-  const tenant = development ? tenants.find((item) => item.id === activeTenantId) : workspace?.tenant
+  const sessionTenantId = session?.user.tenantId
+  const previousTenantId = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (development && previousTenantId.current && sessionTenantId && previousTenantId.current !== sessionTenantId) setActiveSiteId('all')
+    if (sessionTenantId) previousTenantId.current = sessionTenantId
+  }, [development, sessionTenantId, setActiveSiteId])
+  const tenant = development ? tenants.find((item) => item.id === sessionTenantId) : workspace?.tenant
   const user = development
-    ? users.find((item) => item.id === selectedUserId && item.tenantId === activeTenantId) ?? users.find((item) => item.tenantId === activeTenantId)
+    ? users.find((item) => item.id === session?.user.id && item.tenantId === sessionTenantId) ?? users.find((item) => item.tenantId === sessionTenantId && item.role === 'OWNER')
     : workspace?.user
   const userSites = useMemo(() => development
     ? tenant?.sites.filter((site) => user?.role === 'OWNER' || user?.siteIds.includes(site.id)) ?? []
     : workspace?.authorizedSites ?? [], [development, tenant, user, workspace])
+  const notificationCount = development ? events.filter((event) => event.tenantId === sessionTenantId && event.status !== 'Resolved').length : workspace?.events.filter((event) => event.status !== 'Resolved').length ?? 0
   const visibleNavigation = businessNavigation.filter((item) => roleCanAccess(user?.role ?? 'STAFF', item.href.split('/').at(-1) ?? 'dashboard', user?.permissions) && (item.label !== 'Establishments' || user?.role === 'OWNER' || Boolean(user?.permissions?.includes('business:establishments:read'))))
   async function logout() {
     try { await signOutOfPortal('business') } catch { /* Session cookies are invalidated by the auth service when available. */ }
     router.push('/business/login')
   }
 
+  if (development && (isLoading || !session || !tenant || session.portal !== 'business' || session.user.role === 'SUPER_ADMIN')) return <div className="portal-auth-check" role="status">Verifying customer workspace access…</div>
+  const accountName = development ? session?.user.name ?? 'Business user' : workspace?.user ? `${workspace.user.firstName} ${workspace.user.lastName}` : 'Business user'
+  const accountRole = development ? session?.user.role ?? 'Customer' : workspace?.user.role ?? 'Customer'
+
   return <div className="portal-frame business-frame">
     <a className="portal-skip" href="#portal-main">Skip to main content</a>
     <aside className="portal-sidebar business-sidebar">
       <PortalBrand business />
       <div className="business-workspace-label">YOUR WORKSPACE</div>
-      <nav className="portal-nav business-nav" aria-label="RADA Coffee Business navigation">{visibleNavigation.map(({ label, href, icon: Icon }) => <Link className={`portal-nav-link ${activePath(pathname, href) ? 'is-active' : ''}`} href={href} key={href} aria-label={label} aria-current={activePath(pathname, href) ? 'page' : undefined}><Icon aria-hidden="true" /><span>{label}</span>{label === 'Alerts' && <b className="nav-count-business">2</b>}</Link>)}</nav>
+      <nav className="portal-nav business-nav" aria-label="RADA Coffee Business navigation">{visibleNavigation.map(({ label, href, icon: Icon }) => <Link className={`portal-nav-link ${activePath(pathname, href) ? 'is-active' : ''}`} href={href} key={href} aria-label={label} title={label} aria-current={activePath(pathname, href) ? 'page' : undefined}><Icon aria-hidden="true" /><span>{label}</span>{label === 'Alerts' && notificationCount > 0 && <b className="nav-count-business">{notificationCount}</b>}</Link>)}</nav>
       <div className="business-help"><div className="help-icon"><CircleHelp /></div><div><strong>Need a hand?</strong><small>Our team is here to help.</small></div><Link href="mailto:support@radacoffee.example" aria-label="Contact RADA support"><ArrowUpRight /></Link></div>
-      <div className="portal-sidebar-foot"><div className="staff-avatar business-avatar">{user ? `${user.firstName[0]}${user.lastName[0]}` : 'BU'}</div><span><strong>{user ? `${user.firstName} ${user.lastName}` : 'Business user'}</strong><small>{user?.role ?? 'Customer'} account</small></span><button className="sidebar-logout" onClick={logout} aria-label="Sign out of RADA Coffee Business"><LogOut /></button></div>
+      <div className="portal-sidebar-foot"><div className="staff-avatar business-avatar">{accountName.split(' ').map((part) => part[0]).slice(0, 2).join('')}</div><span><strong>{accountName}</strong><small>{accountRole} account</small></span></div>
     </aside>
     <div className="portal-main-column">
-      <header className="portal-topbar business-topbar"><div className="business-context-controls"><label className="context-select tenant-select"><Building2 /><span className="sr-only">Select customer workspace</span><select aria-label="Select customer workspace" value={tenant?.id ?? ''} onChange={(event) => { setActiveTenantId(event.target.value); setActiveSiteId('all'); const nextUser = users.find((candidate) => candidate.tenantId === event.target.value && candidate.role === 'OWNER'); if (nextUser) setSelectedUserId(nextUser.id) }}>{(development ? tenants : tenant ? [tenant] : []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><ChevronDown /></label><label className="context-select site-select"><Store /><span className="sr-only">Filter by establishment</span><select aria-label="Filter by establishment" value={activeSiteId} onChange={(event) => setActiveSiteId(event.target.value)}><option value="all">All establishments</option>{userSites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select><ChevronDown /></label></div><div className="portal-top-actions"><DevelopmentBadge />{isDemoProvider() && <Link className="portal-switch" href="/control/dashboard"><Shield /> Control preview <ArrowUpRight /></Link>}{isDemoProvider() && <label className="dev-persona"><span>Preview as</span><select aria-label="Preview business role" value={user?.id ?? ''} onChange={(event) => { setSelectedUserId(event.target.value); setActiveSiteId('all') }}>{users.filter((candidate) => candidate.tenantId === activeTenantId).map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.role.charAt(0) + candidate.role.slice(1).toLowerCase()} · {candidate.firstName}</option>)}</select></label>}<button className="top-icon-button" aria-label="Notifications" onClick={() => router.push('/business/alerts')}><Bell /><span /></button><div className="business-user-chip"><span>{user ? `${user.firstName[0]}${user.lastName[0]}` : 'BU'}</span><strong>{user?.firstName ?? 'Business'}</strong></div></div></header>
+      <header className="portal-topbar business-topbar"><div className="business-context-controls"><span className="business-tenant-label"><Building2 />{tenant?.name ?? 'Business workspace'}</span><label className="context-select site-select"><Store /><span className="sr-only">Filter by establishment</span><select aria-label="Filter by establishment" value={activeSiteId} onChange={(event) => setActiveSiteId(event.target.value)}><option value="all">All establishments</option>{userSites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select><ChevronDown /></label></div><div className="portal-top-actions"><DevelopmentBadge /><button className="top-icon-button" aria-label={`Notifications${notificationCount ? `, ${notificationCount} open items` : ''}`} onClick={() => router.push('/business/alerts')}><Bell />{notificationCount > 0 && <span />}</button><details className="portal-account-menu"><summary aria-label="Open business account menu"><span>{accountName.split(' ').map((part) => part[0]).slice(0, 2).join('')}</span><strong>{accountName}</strong><ChevronDown /></summary><div className="portal-account-popover"><strong>{accountName}</strong><small>{accountRole} account</small><button onClick={logout}><LogOut /> Sign out</button></div></details></div></header>
       <main className="portal-main" id="portal-main">{children}</main>
     </div>
   </div>

@@ -1,7 +1,7 @@
 'use client'
 
 import { isDemoProvider } from './config'
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 
 export type Site = {
   id: string
@@ -13,8 +13,11 @@ export type Site = {
   hours: string
 }
 
+export type OnboardingConfig = { posProvider: string; cvIntegration: string; edgeBox: string; cameraSetup: string; menuImport: string }
+
 export type Tenant = {
   id: string
+  createdAt?: number
   name: string
   identifier: string
   status: 'Active' | 'Onboarding' | 'Inactive'
@@ -24,6 +27,10 @@ export type Tenant = {
   address: string
   plan: string
   renewalDate: string
+  subscriptionStartDate?: string
+  subscriptionStatus?: 'Trial' | 'Active' | 'Past due' | 'Cancelled'
+  provisioningStatus?: 'Ready' | 'In progress' | 'Blocked'
+  onboardingConfig?: OnboardingConfig
   sites: Site[]
 }
 
@@ -82,7 +89,9 @@ export type ProvisionCustomerInput = {
   sites: Array<Pick<Site, 'name' | 'address' | 'timezone' | 'hours' | 'status'>>
   owner: Pick<TenantUser, 'firstName' | 'lastName' | 'email' | 'role' | 'siteIds'>
   plan: string
+  startDate: string
   renewalDate: string
+  onboardingConfig: OnboardingConfig
 }
 
 type DevelopmentDataContextValue = {
@@ -98,6 +107,18 @@ type DevelopmentDataContextValue = {
   setActiveSiteId: (id: string) => void
   setSelectedUserId: (id: string) => void
   createCustomer: (input: ProvisionCustomerInput) => Tenant
+  updateCustomer: (id: string, patch: Partial<Omit<Tenant, 'id' | 'sites'>>) => void
+  deleteCustomer: (id: string) => void
+  setCustomerStatus: (id: string, status: Tenant['status']) => void
+  addEstablishment: (tenantId: string, input: Omit<Site, 'id' | 'tenantId'>) => void
+  updateEstablishment: (tenantId: string, siteId: string, patch: Partial<Omit<Site, 'id' | 'tenantId'>>) => void
+  deleteEstablishment: (tenantId: string, siteId: string) => void
+  addCustomerUser: (tenantId: string, input: Omit<TenantUser, 'id' | 'tenantId'>) => void
+  updateCustomerUser: (tenantId: string, userId: string, patch: Partial<Omit<TenantUser, 'id' | 'tenantId'>>) => void
+  addCamera: (tenantId: string, input: Omit<BusinessCamera, 'id' | 'tenantId'>) => void
+  updateCamera: (tenantId: string, cameraId: string, patch: Partial<Omit<BusinessCamera, 'id' | 'tenantId'>>) => void
+  deleteCamera: (tenantId: string, cameraId: string) => void
+  updateEventStatus: (tenantId: string, eventId: string, status: BusinessEvent['status']) => void
 }
 
 const radaSites: Site[] = [
@@ -143,42 +164,126 @@ const developmentSnapshots: BusinessSnapshot[] = [
 
 const DevelopmentDataContext = createContext<DevelopmentDataContextValue | null>(null)
 
+const STORAGE_KEY = 'rada-development-data-v1'
+
+type StoredDevelopmentData = { version: 1; tenants: Tenant[]; users: TenantUser[]; cameras: BusinessCamera[]; events: BusinessEvent[]; snapshots: BusinessSnapshot[] }
+
 export function DevelopmentDataProvider({ children }: { children: React.ReactNode }) {
-  const [tenants, setTenants] = useState<Tenant[]>(isDemoProvider() ? developmentTenants : [])
-  const [users, setUsers] = useState<TenantUser[]>(isDemoProvider() ? developmentUsers : [])
-  const [cameras, setCameras] = useState<BusinessCamera[]>(isDemoProvider() ? developmentCameras : [])
-  const [events, setEvents] = useState<BusinessEvent[]>(isDemoProvider() ? developmentEvents : [])
-  const [snapshots] = useState<BusinessSnapshot[]>(isDemoProvider() ? developmentSnapshots : [])
+  const demo = isDemoProvider()
+  const [tenants, setTenants] = useState<Tenant[]>(demo ? developmentTenants : [])
+  const [users, setUsers] = useState<TenantUser[]>(demo ? developmentUsers : [])
+  const [cameras, setCameras] = useState<BusinessCamera[]>(demo ? developmentCameras : [])
+  const [events, setEvents] = useState<BusinessEvent[]>(demo ? developmentEvents : [])
+  const [snapshots, setSnapshots] = useState<BusinessSnapshot[]>(demo ? developmentSnapshots : [])
   const [activeTenantId, setActiveTenantId] = useState('tenant-rada')
   const [activeSiteId, setActiveSiteId] = useState('all')
   const [selectedUserId, setSelectedUserId] = useState('user-rada-owner')
+  const [hydrated, setHydrated] = useState(false)
+
+  useEffect(() => {
+    if (!demo) { setHydrated(true); return }
+    try {
+      const saved = window.localStorage.getItem(STORAGE_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<StoredDevelopmentData>
+        if (parsed.version === 1 && Array.isArray(parsed.tenants) && Array.isArray(parsed.users) && Array.isArray(parsed.cameras) && Array.isArray(parsed.events) && Array.isArray(parsed.snapshots)) {
+          setTenants(parsed.tenants)
+          setUsers(parsed.users)
+          setCameras(parsed.cameras)
+          setEvents(parsed.events)
+          setSnapshots(parsed.snapshots)
+        }
+      }
+    } catch {
+      try { window.localStorage.removeItem(STORAGE_KEY) } catch { /* Storage may be unavailable in a restricted browser context. */ }
+    } finally {
+      setHydrated(true)
+    }
+  }, [demo])
+
+  useEffect(() => {
+    if (!demo || !hydrated) return
+    const data: StoredDevelopmentData = { version: 1, tenants, users, cameras, events, snapshots }
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data)) } catch { /* Storage can be disabled or full; the in-memory workspace remains usable. */ }
+  }, [demo, hydrated, tenants, users, cameras, events, snapshots])
 
   const createCustomer = useCallback((input: ProvisionCustomerInput) => {
     const tenantId = `tenant-${crypto.randomUUID()}`
     const sites = input.sites.map((site, index) => ({ ...site, id: `${tenantId}-site-${index + 1}`, tenantId }))
     const tenant: Tenant = {
-      id: tenantId,
-      name: input.companyName.trim(),
-      identifier: input.identifier.trim(),
-      status: input.status === 'Active' ? 'Onboarding' : input.status,
-      contactName: input.contactName.trim(),
-      contactEmail: input.contactEmail.trim(),
-      phone: input.phone.trim(),
-      address: input.address.trim(),
-      plan: input.plan,
-      renewalDate: input.renewalDate,
-      sites,
+      id: tenantId, createdAt: Date.now(), name: input.companyName.trim(), identifier: input.identifier.trim(), status: input.status,
+      contactName: input.contactName.trim(), contactEmail: input.contactEmail.trim(), phone: input.phone.trim(), address: input.address.trim(),
+      plan: input.plan, subscriptionStartDate: input.startDate, renewalDate: input.renewalDate, subscriptionStatus: 'Trial', provisioningStatus: 'In progress', onboardingConfig: input.onboardingConfig, sites,
     }
     const owner: TenantUser = {
-      id: `${tenantId}-owner`, tenantId, firstName: input.owner.firstName.trim(), lastName: input.owner.lastName.trim(),
-      email: input.owner.email.trim(), role: 'OWNER', siteIds: sites.filter((site, index) => input.owner.siteIds.includes(input.sites[index].name)).map((site) => site.id), status: 'Invitation pending',
+      id: `${tenantId}-owner`, tenantId, firstName: input.owner.firstName.trim(), lastName: input.owner.lastName.trim(), email: input.owner.email.trim(),
+      role: input.owner.role, siteIds: sites.filter((site, index) => input.owner.siteIds.includes(input.sites[index].name)).map((site) => site.id), status: 'Invitation pending',
     }
     setTenants((current) => [...current, tenant])
     setUsers((current) => [...current, owner])
     return tenant
   }, [])
 
-  const value = useMemo(() => ({ tenants, users, cameras, events, snapshots, activeTenantId, activeSiteId, selectedUserId, setActiveTenantId, setActiveSiteId, setSelectedUserId, createCustomer }), [tenants, users, cameras, events, snapshots, activeTenantId, activeSiteId, selectedUserId, createCustomer])
+  const updateCustomer = useCallback((id: string, patch: Partial<Omit<Tenant, 'id' | 'sites'>>) => {
+    setTenants((current) => current.map((tenant) => tenant.id === id ? { ...tenant, ...patch } : tenant))
+  }, [])
+
+  const deleteCustomer = useCallback((id: string) => {
+    setTenants((current) => current.filter((tenant) => tenant.id !== id))
+    setUsers((current) => current.filter((user) => user.tenantId !== id))
+    setCameras((current) => current.filter((camera) => camera.tenantId !== id))
+    setEvents((current) => current.filter((event) => event.tenantId !== id))
+    setSnapshots((current) => current.filter((snapshot) => snapshot.tenantId !== id))
+    if (activeTenantId === id) { setActiveTenantId(''); setActiveSiteId('all'); setSelectedUserId('') }
+  }, [activeTenantId])
+
+  const setCustomerStatus = useCallback((id: string, status: Tenant['status']) => {
+    setTenants((current) => current.map((tenant) => tenant.id === id ? { ...tenant, status } : tenant))
+  }, [])
+
+  const addEstablishment = useCallback((tenantId: string, input: Omit<Site, 'id' | 'tenantId'>) => {
+    const site: Site = { ...input, id: `site-${crypto.randomUUID()}`, tenantId }
+    setTenants((current) => current.map((tenant) => tenant.id === tenantId ? { ...tenant, sites: [...tenant.sites, site] } : tenant))
+  }, [])
+
+  const updateEstablishment = useCallback((tenantId: string, siteId: string, patch: Partial<Omit<Site, 'id' | 'tenantId'>>) => {
+    setTenants((current) => current.map((tenant) => tenant.id === tenantId ? { ...tenant, sites: tenant.sites.map((site) => site.id === siteId ? { ...site, ...patch } : site) } : tenant))
+  }, [])
+
+  const deleteEstablishment = useCallback((tenantId: string, siteId: string) => {
+    setTenants((current) => current.map((tenant) => tenant.id === tenantId ? { ...tenant, sites: tenant.sites.filter((site) => site.id !== siteId) } : tenant))
+    setUsers((current) => current.map((user) => user.tenantId === tenantId ? { ...user, siteIds: user.siteIds.filter((id) => id !== siteId) } : user))
+    setCameras((current) => current.filter((camera) => camera.siteId !== siteId))
+    setEvents((current) => current.filter((event) => event.siteId !== siteId))
+    setSnapshots((current) => current.filter((snapshot) => snapshot.siteId !== siteId))
+    if (activeSiteId === siteId) setActiveSiteId('all')
+  }, [activeSiteId])
+
+  const addCustomerUser = useCallback((tenantId: string, input: Omit<TenantUser, 'id' | 'tenantId'>) => {
+    setUsers((current) => [...current, { ...input, id: `user-${crypto.randomUUID()}`, tenantId }])
+  }, [])
+
+  const updateCustomerUser = useCallback((tenantId: string, userId: string, patch: Partial<Omit<TenantUser, 'id' | 'tenantId'>>) => {
+    setUsers((current) => current.map((user) => user.tenantId === tenantId && user.id === userId ? { ...user, ...patch } : user))
+  }, [])
+
+  const addCamera = useCallback((tenantId: string, input: Omit<BusinessCamera, 'id' | 'tenantId'>) => {
+    setCameras((current) => [...current, { ...input, id: `CAM-${crypto.randomUUID()}`, tenantId }])
+  }, [])
+
+  const updateCamera = useCallback((tenantId: string, cameraId: string, patch: Partial<Omit<BusinessCamera, 'id' | 'tenantId'>>) => {
+    setCameras((current) => current.map((camera) => camera.tenantId === tenantId && camera.id === cameraId ? { ...camera, ...patch } : camera))
+  }, [])
+
+  const deleteCamera = useCallback((tenantId: string, cameraId: string) => {
+    setCameras((current) => current.filter((camera) => camera.tenantId !== tenantId || camera.id !== cameraId))
+  }, [])
+
+  const updateEventStatus = useCallback((tenantId: string, eventId: string, status: BusinessEvent['status']) => {
+    setEvents((current) => current.map((event) => event.tenantId === tenantId && event.id === eventId ? { ...event, status } : event))
+  }, [])
+
+  const value = useMemo(() => ({ tenants, users, cameras, events, snapshots, activeTenantId, activeSiteId, selectedUserId, setActiveTenantId, setActiveSiteId, setSelectedUserId, createCustomer, updateCustomer, deleteCustomer, setCustomerStatus, addEstablishment, updateEstablishment, deleteEstablishment, addCustomerUser, updateCustomerUser, addCamera, updateCamera, deleteCamera, updateEventStatus }), [tenants, users, cameras, events, snapshots, activeTenantId, activeSiteId, selectedUserId, createCustomer, updateCustomer, deleteCustomer, setCustomerStatus, addEstablishment, updateEstablishment, deleteEstablishment, addCustomerUser, updateCustomerUser, addCamera, updateCamera, deleteCamera, updateEventStatus])
   return <DevelopmentDataContext.Provider value={value}>{children}</DevelopmentDataContext.Provider>
 }
 

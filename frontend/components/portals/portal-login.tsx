@@ -44,8 +44,8 @@ export function PortalLogin({ portal }: { portal: PortalKind }) {
         {error && <div className="portal-login-error" role="alert">{error}</div>}
         <button className="portal-login-submit" disabled={pending}>{pending ? 'Signing in…' : 'Continue'}<ArrowRight /></button>
       </form>
-      <div className="login-boundary-note"><LockKeyhole /> Authentication and permissions are verified by the RADA API.</div>
-      {isDemoProvider() && <Link className="dev-preview-link" href={control ? '/control/dashboard' : '/business/dashboard'}>Open development preview <ArrowRight /></Link>}
+      <div className="login-boundary-note"><LockKeyhole /> {isDemoProvider() && process.env.NODE_ENV !== 'production' ? 'Development credentials are validated by the local auth adapter.' : 'Authentication and permissions are verified by the RADA API.'}</div>
+      {isDemoProvider() && process.env.NODE_ENV !== 'production' && <div className="demo-credentials"><strong>Development account</strong><span>{control ? 'admin@rada-ai.ma' : 'alex@radacoffee.example'}</span><span>{control ? '12345678' : 'business-demo'}</span></div>}
     </section>
     <p className="portal-login-footer">{control ? 'For authorized RADA personnel only.' : 'Your organization’s data is isolated to your authorized access.'} <span>·</span> Development preview contains fixture data.</p>
   </main>

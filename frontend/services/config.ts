@@ -10,7 +10,7 @@ export const appConfig = Object.freeze({
   apiBaseUrl: configuredApiUrl?.trim().replace(/\/+$/, '') ?? '',
   apiVersion: (process.env.NEXT_PUBLIC_RADA_API_VERSION ?? 'v1').replace(/^\/+|\/+$/g, ''),
   requestTimeoutMs: Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? Math.min(configuredTimeout, 120_000) : 12_000,
-  dataProvider: (configuredProvider === 'api' ? 'api' : configuredProvider === 'demo' ? 'demo' : process.env.NODE_ENV === 'production' ? 'api' : 'demo') as DataProvider,
+  dataProvider: (process.env.NODE_ENV === 'production' || configuredProvider === 'api' ? 'api' : 'demo') as DataProvider,
   authenticationStrategy: (process.env.NEXT_PUBLIC_RADA_AUTH_STRATEGY === 'bearer' ? 'bearer' : 'http-only-cookie') as AuthenticationStrategy,
   features: Object.freeze({
     realtime: process.env.NEXT_PUBLIC_RADA_REALTIME_ENABLED === 'true',
