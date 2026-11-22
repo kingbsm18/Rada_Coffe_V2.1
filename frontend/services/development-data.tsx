@@ -168,11 +168,60 @@ const STORAGE_KEY = 'rada-development-data-v1'
 
 type StoredDevelopmentData = { version: 1; tenants: Tenant[]; users: TenantUser[]; cameras: BusinessCamera[]; events: BusinessEvent[]; snapshots: BusinessSnapshot[] }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function hasStrings(value: unknown, keys: string[]): value is Record<string, unknown> {
+  return isRecord(value) && keys.every((key) => typeof value[key] === 'string')
+}
+
+function isStoredSite(value: unknown): value is Site {
+  return hasStrings(value, ['id', 'tenantId', 'name', 'address', 'timezone', 'hours', 'status']) && ['Active', 'Onboarding', 'Inactive'].includes(value.status as string)
+}
+
+function isStoredTenant(value: unknown): value is Tenant {
+  return hasStrings(value, ['id', 'name', 'identifier', 'status', 'contactName', 'contactEmail', 'phone', 'address', 'plan', 'renewalDate'])
+    && ['Active', 'Onboarding', 'Inactive'].includes(value.status as string)
+    && Array.isArray(value.sites) && value.sites.every(isStoredSite)
+    && (value.createdAt === undefined || typeof value.createdAt === 'number')
+}
+
+function isStoredUser(value: unknown): value is TenantUser {
+  return hasStrings(value, ['id', 'tenantId', 'firstName', 'lastName', 'email', 'role', 'status'])
+    && ['OWNER', 'COMPANY_EXECUTIVE', 'MANAGER', 'OPERATIONS_MANAGER', 'ESTABLISHMENT_MANAGER', 'STAFF'].includes(value.role as string)
+    && ['Active', 'Invitation pending'].includes(value.status as string)
+    && Array.isArray(value.siteIds) && value.siteIds.every((id) => typeof id === 'string')
+}
+
+function isStoredCamera(value: unknown): value is BusinessCamera {
+  return hasStrings(value, ['id', 'tenantId', 'siteId', 'name', 'zone', 'status', 'lastFrame'])
+    && ['Online', 'Degraded', 'Offline'].includes(value.status as string)
+}
+
+function isStoredEvent(value: unknown): value is BusinessEvent {
+  return hasStrings(value, ['id', 'tenantId', 'siteId', 'kind', 'product', 'time', 'status'])
+    && typeof value.quantity === 'number' && Number.isFinite(value.quantity)
+    && typeof value.impact === 'number' && Number.isFinite(value.impact)
+    && ['Needs review', 'Resolved', 'Pending'].includes(value.status as string)
+}
+
+function isStoredSnapshot(value: unknown): value is BusinessSnapshot {
+  return hasStrings(value, ['tenantId', 'siteId'])
+    && ['posRegistered', 'handovers', 'matchRate', 'unregisteredHandovers', 'discrepancy'].every((key) => typeof value[key] === 'number' && Number.isFinite(value[key] as number))
+}
+
 function parseStoredDevelopmentData(value: string | null): StoredDevelopmentData | null {
   if (!value) return null
   try {
-    const parsed = JSON.parse(value) as Partial<StoredDevelopmentData>
-    if (parsed.version === 1 && Array.isArray(parsed.tenants) && Array.isArray(parsed.users) && Array.isArray(parsed.cameras) && Array.isArray(parsed.events) && Array.isArray(parsed.snapshots)) return parsed as StoredDevelopmentData
+    const parsed: unknown = JSON.parse(value)
+    if (!isRecord(parsed) || parsed.version !== 1) return null
+    if (!Array.isArray(parsed.tenants) || !parsed.tenants.every(isStoredTenant)) return null
+    if (!Array.isArray(parsed.users) || !parsed.users.every(isStoredUser)) return null
+    if (!Array.isArray(parsed.cameras) || !parsed.cameras.every(isStoredCamera)) return null
+    if (!Array.isArray(parsed.events) || !parsed.events.every(isStoredEvent)) return null
+    if (!Array.isArray(parsed.snapshots) || !parsed.snapshots.every(isStoredSnapshot)) return null
+    return parsed as unknown as StoredDevelopmentData
   } catch { /* Invalid local data is ignored and the development seed remains available. */ }
   return null
 }

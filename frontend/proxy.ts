@@ -62,8 +62,16 @@ export async function proxy(request: NextRequest) {
     const session = await verifyDevelopmentSession(request.cookies.get(developmentCookieName(portal))?.value, portal)
     if (!session) return controlLogin || businessLogin ? NextResponse.next() : NextResponse.redirect(new URL(loginPath, request.url))
     const role = session.user.role
-    if (portal === 'control' && role !== 'SUPER_ADMIN' && !role.startsWith('RADA_')) return NextResponse.redirect(new URL('/control/login', request.url))
-    if (portal === 'business' && (role === 'SUPER_ADMIN' || !businessRoleCanOpen(role, section))) return NextResponse.redirect(new URL('/business/dashboard', request.url))
+    if (portal === 'control') {
+      const hasControlAccess = role === 'SUPER_ADMIN' || role.startsWith('RADA_')
+      if (controlLogin) return hasControlAccess ? NextResponse.redirect(new URL('/control/dashboard', request.url)) : NextResponse.next()
+      if (!hasControlAccess) return NextResponse.redirect(new URL('/control/login', request.url))
+    }
+    if (portal === 'business') {
+      if (businessLogin) return role !== 'SUPER_ADMIN' && businessRoleCanOpen(role, 'dashboard') ? NextResponse.redirect(new URL('/business/dashboard', request.url)) : NextResponse.next()
+      if (role === 'SUPER_ADMIN') return NextResponse.redirect(new URL('/business/login', request.url))
+      if (!businessRoleCanOpen(role, section)) return NextResponse.redirect(new URL('/business/dashboard', request.url))
+    }
     const permissions = session.user.permissions
     if (permissions?.length && !permissions.includes('business:*') && !permissions.includes(`business:${section}:read`) && portal === 'business') return NextResponse.redirect(new URL('/business/dashboard', request.url))
     if (controlLogin) return NextResponse.redirect(new URL('/control/dashboard', request.url))
@@ -77,8 +85,17 @@ export async function proxy(request: NextRequest) {
     if (controlLogin || businessLogin) return NextResponse.next()
     return NextResponse.redirect(new URL(loginPath, request.url))
   }
-  if (portal === 'control' && !internalRole(session.user?.role ?? '')) return NextResponse.redirect(new URL('/control/login', request.url))
-  if (portal === 'business' && (businessLogin || !businessRoleCanOpen(session.user?.role ?? 'STAFF', section))) return NextResponse.redirect(new URL('/business/dashboard', request.url))
+  const role = session.user?.role ?? ''
+  if (portal === 'control') {
+    const hasControlAccess = internalRole(role)
+    if (controlLogin) return hasControlAccess ? NextResponse.redirect(new URL('/control/dashboard', request.url)) : NextResponse.next()
+    if (!hasControlAccess) return NextResponse.redirect(new URL('/control/login', request.url))
+  }
+  if (portal === 'business') {
+    if (businessLogin) return role !== 'SUPER_ADMIN' && businessRoleCanOpen(role || 'STAFF', 'dashboard') ? NextResponse.redirect(new URL('/business/dashboard', request.url)) : NextResponse.next()
+    if (role === 'SUPER_ADMIN') return NextResponse.redirect(new URL('/business/login', request.url))
+    if (!businessRoleCanOpen(role || 'STAFF', section)) return NextResponse.redirect(new URL('/business/dashboard', request.url))
+  }
   const permissions = session.user?.permissions ?? session.permissions
   if (permissions?.length && portal === 'business' && !permissions.includes('business:*') && !permissions.includes(`business:${section}:read`)) return NextResponse.redirect(new URL('/business/dashboard', request.url))
   if (permissions?.length && portal === 'control' && !controlLogin && !permissions.includes('control:*') && !permissions.includes(`control:${section}:read`)) return NextResponse.redirect(new URL('/control/dashboard', request.url))
