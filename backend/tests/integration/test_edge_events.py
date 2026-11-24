@@ -1,5 +1,8 @@
+import hashlib
+import json
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import func, select, text
@@ -196,6 +199,50 @@ def test_sequence_gaps_are_detected(client, other_device) -> None:
         {"first_missing": 3, "last_missing": 4},
         {"first_missing": 6, "last_missing": 8},
     ]
+
+
+def _isolated_client(make_client, *devices):
+    registry = [
+        {
+            "key_sha256": hashlib.sha256(d.key.encode()).hexdigest(),
+            "tenant_id": str(d.tenant_id),
+            "establishment_id": str(d.establishment_id),
+            "source_instance": d.source_instance,
+        }
+        for d in devices
+    ]
+    return make_client(edge_dev_devices=json.dumps(registry))
+
+
+def _gaps(client, device):
+    response = client.get("/v1/edge/sequence-gaps", headers={"X-RADA-Device-Key": device.key})
+    return response.json()["gaps"]
+
+
+def test_missing_events_at_stream_start_are_a_gap(make_client) -> None:
+    late = SimpleNamespace(
+        key="late-key",
+        tenant_id=uuid.uuid4(),
+        establishment_id=uuid.uuid4(),
+        source_instance=f"edge-late-{uuid.uuid4().hex[:8]}",
+    )
+    client = _isolated_client(make_client, late)
+    post(client, late, [event(late, 3)])
+    assert _gaps(client, late) == [{"first_missing": 1, "last_missing": 2}]
+
+
+def test_sequence_gaps_are_scoped_to_the_device(make_client) -> None:
+    name = f"edge-shared-{uuid.uuid4().hex[:8]}"
+    first, second = (
+        SimpleNamespace(
+            key=key, tenant_id=uuid.uuid4(), establishment_id=uuid.uuid4(), source_instance=name
+        )
+        for key in ("first-key", "second-key")
+    )
+    client = _isolated_client(make_client, first, second)
+    post(client, first, [event(first, 1), event(first, 2)])
+    post(client, second, [event(second, 4)])
+    assert _gaps(client, first) == []
 
 
 def test_out_of_order_arrival_is_accepted(client, device) -> None:

@@ -76,8 +76,8 @@
       "type": "string"
     },
     "sequence": {
-      "description": "Monotonic per-stream sequence number; stream = source_instance.",
-      "minimum": 0,
+      "description": "Monotonic per-stream sequence number starting at 1; stream = source_instance.",
+      "minimum": 1,
       "title": "Sequence",
       "type": "integer"
     },

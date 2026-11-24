@@ -119,20 +119,28 @@ def quarantine(
     return record.id
 
 
-def find_sequence_gaps(session: Session, source_instance: str) -> list[SequenceGap]:
+def find_sequence_gaps(
+    session: Session, *, tenant_id: uuid.UUID, establishment_id: uuid.UUID, source_instance: str
+) -> list[SequenceGap]:
     rows = session.execute(
         text(
             """
             SELECT previous + 1 AS first_missing, sequence - 1 AS last_missing
             FROM (
-                SELECT sequence, LAG(sequence) OVER (ORDER BY sequence) AS previous
+                SELECT sequence, LAG(sequence, 1, 0::bigint) OVER (ORDER BY sequence) AS previous
                 FROM (SELECT DISTINCT sequence FROM ingested_events
-                      WHERE source_instance = :source_instance) AS s
+                      WHERE tenant_id = :tenant_id
+                        AND establishment_id = :establishment_id
+                        AND source_instance = :source_instance) AS s
             ) AS ordered
-            WHERE previous IS NOT NULL AND sequence - previous > 1
+            WHERE sequence - previous > 1
             ORDER BY first_missing
             """
         ),
-        {"source_instance": source_instance},
+        {
+            "tenant_id": tenant_id,
+            "establishment_id": establishment_id,
+            "source_instance": source_instance,
+        },
     ).all()
     return [SequenceGap(row.first_missing, row.last_missing) for row in rows]

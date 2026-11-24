@@ -32,4 +32,5 @@ cd backend && python -m scripts.export_contracts --check # CI drift check
 - **Acknowledgement:** a 200 response is sent only after the database commit. On `503 not_persisted` the edge must retry the whole batch.
 - **Device scope:** the envelope's tenant, establishment and source instance must match the authenticated device (ISO-2 safeguard 5).
 - **Statuses:** `accepted`, `duplicate`, `conflict` and `quarantined` all mean the backend holds the submission durably, so the edge may acknowledge it locally.
-- **Sequence gaps:** `GET /v1/edge/sequence-gaps` reports missing sequence ranges for the authenticated source instance.
+- **Sequence gaps:** sequences start at 1. `GET /v1/edge/sequence-gaps` reports missing ranges (including before the first received event) for the authenticated device's tenant, establishment and source instance.
+- **Limits:** at most `RADA_EDGE_MAX_BATCH_SIZE` events and `RADA_EDGE_MAX_BODY_BYTES` bytes per request (413 otherwise). Strings containing U+0000 are quarantined (PostgreSQL cannot store them).

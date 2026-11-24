@@ -47,8 +47,8 @@ class EventEnvelopeV1(BaseModel):
     )
     sequence: int = Field(
         strict=True,
-        ge=0,
-        description="Monotonic per-stream sequence number; stream = source_instance.",
+        ge=1,
+        description="Monotonic per-stream sequence number starting at 1; stream = source_instance.",
     )
     event_type: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_.]*$")
     schema_version: str = Field(min_length=1, max_length=32)

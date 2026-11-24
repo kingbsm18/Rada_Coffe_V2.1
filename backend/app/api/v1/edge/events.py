@@ -127,7 +127,12 @@ def sequence_gaps(
     device: Annotated[DeviceContext, Depends(authenticated_device)],
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, Any]:
-    gaps = find_sequence_gaps(session, device.source_instance)
+    gaps = find_sequence_gaps(
+        session,
+        tenant_id=device.tenant_id,
+        establishment_id=device.establishment_id,
+        source_instance=device.source_instance,
+    )
     return {
         "source_instance": device.source_instance,
         "gaps": [{"first_missing": g.first_missing, "last_missing": g.last_missing} for g in gaps],
