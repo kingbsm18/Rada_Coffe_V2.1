@@ -35,3 +35,10 @@ def test_production_accepts_explicit_configuration() -> None:
         _env_file=None, environment="production", database_url="postgresql+psycopg://u:p@db/rada"
     )
     assert not settings.is_development
+
+
+def test_alembic_config_keeps_percent_encoded_credentials() -> None:
+    from app.core.db import alembic_config
+
+    url = "postgresql+psycopg://rada:p%40ss@db/rada"
+    assert alembic_config(url).get_main_option("sqlalchemy.url") == url

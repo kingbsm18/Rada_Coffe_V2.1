@@ -42,7 +42,7 @@ def alembic_config(database_url: str | None = None) -> Config:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
     if database_url:
-        config.set_main_option("sqlalchemy.url", database_url)
+        config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
     return config
 
 
