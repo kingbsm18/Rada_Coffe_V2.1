@@ -4,7 +4,8 @@ from pydantic import ValidationError
 from app.core.config import DEV_DATABASE_PASSWORD, Settings
 
 
-def test_development_defaults_are_accepted() -> None:
+def test_development_defaults_are_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("RADA_ENVIRONMENT", raising=False)
     settings = Settings(_env_file=None)
     assert settings.environment == "development"
     assert settings.is_development
