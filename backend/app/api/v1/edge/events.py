@@ -26,6 +26,18 @@ logger = logging.getLogger("rada.edge")
 router = APIRouter(prefix="/edge", tags=["edge"])
 
 
+async def _read_body(request: Request, limit: int) -> bytes | None:
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        return None
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > limit:
+            return None
+    return bytes(body)
+
+
 def _batch_events(body: Any) -> list[Any] | None:
     if isinstance(body, dict) and set(body) == {"events"} and isinstance(body["events"], list):
         return body["events"]
@@ -40,7 +52,14 @@ async def ingest_events(
     settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> JSONResponse:
     received_at = datetime.now(UTC)
-    raw = await request.body()
+    raw = await _read_body(request, settings.edge_max_body_bytes)
+    if raw is None:
+        return error_response(
+            413,
+            "body_too_large",
+            "Split the batch and retry.",
+            {"max_body_bytes": settings.edge_max_body_bytes},
+        )
     try:
         body: Any = json.loads(raw)
     except (UnicodeDecodeError, json.JSONDecodeError):

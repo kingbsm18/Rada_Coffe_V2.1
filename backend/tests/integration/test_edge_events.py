@@ -159,6 +159,13 @@ def test_batch_limits(client, device) -> None:
     assert response.json()["details"] == {"max_batch_size": 50}
 
 
+def test_oversized_body_is_rejected_before_parsing(make_client, device) -> None:
+    client = make_client(edge_max_body_bytes=2048)
+    response = post(client, device, [event(device, 1, payload={"blob": "x" * 4096})])
+    assert response.status_code == 413
+    assert response.json()["details"] == {"max_body_bytes": 2048}
+
+
 def test_sequence_gaps_are_detected(client, other_device) -> None:
     post(client, other_device, [event(other_device, s) for s in (1, 2, 5, 9)])
     response = client.get("/v1/edge/sequence-gaps", headers={"X-RADA-Device-Key": other_device.key})

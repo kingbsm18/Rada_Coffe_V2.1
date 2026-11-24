@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     log_format: Literal["json", "console"] = "json"
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
     edge_max_batch_size: int = Field(default=500, ge=1, le=10_000)
+    edge_max_body_bytes: int = Field(default=5 * 1024 * 1024, ge=1024)
     edge_dev_devices: str = ""
     worker_poll_interval_seconds: float = Field(default=5.0, gt=0)
 
