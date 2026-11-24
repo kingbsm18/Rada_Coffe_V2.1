@@ -27,6 +27,30 @@ class SequenceGap:
     last_missing: int
 
 
+def contains_nul(value: Any) -> bool:
+    """PostgreSQL text and jsonb cannot store U+0000."""
+    if isinstance(value, str):
+        return "\x00" in value
+    if isinstance(value, dict):
+        return any(contains_nul(k) or contains_nul(v) for k, v in value.items())
+    if isinstance(value, list):
+        return any(contains_nul(item) for item in value)
+    return False
+
+
+def _storable_json(value: Any) -> Any:
+    encoded = json.dumps(value, default=str)
+    if contains_nul(value):
+        return {"_json_text": encoded}
+    return json.loads(encoded)
+
+
+def _storable_text(value: Any) -> str | None:
+    if isinstance(value, str) and "\x00" not in value:
+        return value[:128]
+    return None
+
+
 def content_digest(envelope: EventEnvelopeV1) -> str:
     canonical = json.dumps(envelope.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
@@ -84,11 +108,11 @@ def quarantine(
     record = QuarantinedEvent(
         channel=channel,
         reason=reason,
-        errors=json.loads(json.dumps(errors, default=str)),
-        body=json.loads(json.dumps(body, default=str)),
+        errors=_storable_json(errors),
+        body=_storable_json(body),
         received_at=received_at,
-        source_instance=source_instance[:128] if isinstance(source_instance, str) else None,
-        event_id=event_id[:128] if isinstance(event_id, str) else None,
+        source_instance=_storable_text(source_instance),
+        event_id=_storable_text(event_id),
     )
     session.add(record)
     session.flush()

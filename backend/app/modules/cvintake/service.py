@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.modules.eventstore.envelope import EventEnvelopeV1
-from app.modules.eventstore.service import ingest, quarantine
+from app.modules.eventstore.service import contains_nul, ingest, quarantine
 
 # Event families listed in ARC-2 (CONFIRMED). The type names are PROVISIONAL.
 CV_EVENT_TYPES = frozenset(
@@ -90,6 +90,9 @@ def ingest_edge_batch(
             )
             return EventOutcome(_i, "quarantined", _e, _s, reason, quarantine_id)
 
+        if contains_nul(raw):
+            outcomes.append(quarantined("unsupported_nul_character", ["U+0000 is not supported"]))
+            continue
         try:
             envelope = EventEnvelopeV1.model_validate(raw)
         except ValidationError as error:

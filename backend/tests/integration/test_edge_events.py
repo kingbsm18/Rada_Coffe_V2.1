@@ -166,6 +166,29 @@ def test_oversized_body_is_rejected_before_parsing(make_client, device) -> None:
     assert response.json()["details"] == {"max_body_bytes": 2048}
 
 
+def test_nul_character_is_quarantined_without_blocking_the_batch(
+    client, device, migrated_engine
+) -> None:
+    bad = event(device, 90, payload={"note": "a\x00b"})
+    response = post(client, device, [bad, event(device, 91)])
+    assert response.status_code == 200, response.text
+    results = response.json()["results"]
+    assert [r["status"] for r in results] == ["quarantined", "accepted"]
+    record = quarantined(migrated_engine, results[0]["quarantine_id"])
+    assert record.reason == "unsupported_nul_character"
+    assert "\\u0000" in record.body["_json_text"]
+
+
+def test_malformed_body_with_nul_is_quarantined(client, device) -> None:
+    response = client.post(
+        "/v1/edge/events",
+        content=b'{"events": "\x00"',
+        headers={"X-RADA-Device-Key": device.key},
+    )
+    assert response.status_code == 422
+    assert "quarantine_id" in response.json()["details"]
+
+
 def test_sequence_gaps_are_detected(client, other_device) -> None:
     post(client, other_device, [event(other_device, s) for s in (1, 2, 5, 9)])
     response = client.get("/v1/edge/sequence-gaps", headers={"X-RADA-Device-Key": other_device.key})
