@@ -1,0 +1,60 @@
+name: rada
+
+x-backend: &backend
+  build: ./backend
+  environment: &backend-env
+    RADA_ENVIRONMENT: ${RADA_ENVIRONMENT:-development}
+    RADA_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rada}:${POSTGRES_PASSWORD:-rada_dev_password}@db:5432/${POSTGRES_DB:-rada}
+    RADA_LOG_LEVEL: ${RADA_LOG_LEVEL:-INFO}
+    RADA_LOG_FORMAT: ${RADA_LOG_FORMAT:-json}
+    RADA_CORS_ORIGINS: ${RADA_CORS_ORIGINS:-["http://localhost:3000"]}
+    RADA_EDGE_MAX_BATCH_SIZE: ${RADA_EDGE_MAX_BATCH_SIZE:-500}
+    RADA_EDGE_MAX_BODY_BYTES: ${RADA_EDGE_MAX_BODY_BYTES:-5242880}
+    RADA_EDGE_DEV_DEVICES: ${RADA_EDGE_DEV_DEVICES:-}
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rada}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rada_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-rada}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - rada-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *backend
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    <<: *backend
+    command: ["python", "-m", "app.workers.main"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  rada-db:
