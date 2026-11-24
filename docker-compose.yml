@@ -18,7 +18,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rada_dev_password}
       POSTGRES_DB: ${POSTGRES_DB:-rada}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - rada-db:/var/lib/postgresql/data
     healthcheck:
