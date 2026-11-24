@@ -58,3 +58,18 @@ def test_digest_ignores_key_order_but_not_content() -> None:
     digest = content_digest(EventEnvelopeV1.model_validate(base))
     assert digest == content_digest(EventEnvelopeV1.model_validate(same))
     assert digest != content_digest(EventEnvelopeV1.model_validate(changed))
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"sequence": True},
+        {"sequence": "3"},
+        {"sequence": 3.0},
+        {"source_time": 1795600000},
+        {"edge_recorded_at": 1795600000.5},
+    ],
+)
+def test_wire_types_are_not_coerced(overrides) -> None:
+    with pytest.raises(ValidationError):
+        EventEnvelopeV1.model_validate(envelope(**overrides))

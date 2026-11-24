@@ -5,12 +5,21 @@ the interpretation of "per-stream sequence" (one stream per source instance) are
 implementation choices pending the Edge Runtime architecture document.
 """
 
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, BeforeValidator, ConfigDict, Field
 
 ENVELOPE_SCHEMA_ID = "https://rada.ai/contracts/edge-events/v1/envelope.schema.json"
+
+
+def _require_json_string(value: Any) -> Any:
+    if not isinstance(value, str):
+        raise ValueError("must be an RFC 3339 date-time string")
+    return value
+
+
+Timestamp = Annotated[AwareDatetime, BeforeValidator(_require_json_string)]
 
 Identifier = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._:\-]+$")
 
@@ -37,12 +46,14 @@ class EventEnvelopeV1(BaseModel):
         description="Source instance; together with event_id forms the idempotency key (ARC-5).",
     )
     sequence: int = Field(
-        ge=0, description="Monotonic per-stream sequence number; stream = source_instance."
+        strict=True,
+        ge=0,
+        description="Monotonic per-stream sequence number; stream = source_instance.",
     )
     event_type: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_.]*$")
     schema_version: str = Field(min_length=1, max_length=32)
-    source_time: AwareDatetime = Field(description="Source-clock time (stored in UTC).")
-    edge_recorded_at: AwareDatetime = Field(description="Time the edge recorded the event.")
+    source_time: Timestamp = Field(description="Source-clock time (stored in UTC).")
+    edge_recorded_at: Timestamp = Field(description="Time the edge recorded the event.")
     config_version: str = Field(min_length=1, max_length=128)
     model_version: str | None = Field(default=None, min_length=1, max_length=128)
     payload: dict[str, Any] = Field(description="Type-specific payload, stored uninterpreted.")
