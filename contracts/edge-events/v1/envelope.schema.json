@@ -1,0 +1,119 @@
+{
+  "$id": "https://rada.ai/contracts/edge-events/v1/envelope.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "config_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Config Version",
+      "type": "string"
+    },
+    "edge_recorded_at": {
+      "description": "Time the edge recorded the event.",
+      "format": "date-time",
+      "title": "Edge Recorded At",
+      "type": "string"
+    },
+    "establishment_id": {
+      "format": "uuid",
+      "title": "Establishment Id",
+      "type": "string"
+    },
+    "event_id": {
+      "description": "Event ID generated at the source (ARC-1).",
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:\\-]+$",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "event_type": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9_.]*$",
+      "title": "Event Type",
+      "type": "string"
+    },
+    "model_version": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model Version"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "description": "Type-specific payload, stored uninterpreted.",
+      "title": "Payload",
+      "type": "object"
+    },
+    "raw_payload": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Untouched raw source payload (POS events, ARC-1).",
+      "title": "Raw Payload"
+    },
+    "schema_version": {
+      "maxLength": 32,
+      "minLength": 1,
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "sequence": {
+      "description": "Monotonic per-stream sequence number; stream = source_instance.",
+      "minimum": 0,
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "source_instance": {
+      "description": "Source instance; together with event_id forms the idempotency key (ARC-5).",
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:\\-]+$",
+      "title": "Source Instance",
+      "type": "string"
+    },
+    "source_time": {
+      "description": "Source-clock time (stored in UTC).",
+      "format": "date-time",
+      "title": "Source Time",
+      "type": "string"
+    },
+    "tenant_id": {
+      "format": "uuid",
+      "title": "Tenant Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_id",
+    "tenant_id",
+    "establishment_id",
+    "source_instance",
+    "sequence",
+    "event_type",
+    "schema_version",
+    "source_time",
+    "edge_recorded_at",
+    "config_version",
+    "payload"
+  ],
+  "title": "RADA event envelope v1 (PROVISIONAL)",
+  "type": "object"
+}

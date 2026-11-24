@@ -81,6 +81,8 @@
 .development-badge i,.wizard-environment i { width: 5px; height: 5px; border-radius: 50%; background: var(--portal-gold); box-shadow: 0 0 7px #d2ad7080; }
 .control-system-state,.camera-no-stream { display: inline-flex; align-items: center; gap: 6px; color: #929c97; font-size: 9px; white-space: nowrap; }
 .control-system-state i,.camera-no-stream i { width: 6px; height: 6px; border-radius: 50%; background: #b99054; }
+.control-system-state[data-state='ready'] i { background: #6fbf8a; }
+.control-system-state[data-state='error'] i { background: #d8644f; }
 .portal-switch { display: inline-flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid #334037; border-radius: 6px; color: #b7c9bc; font-size: 9px; text-decoration: none; }
 .portal-switch:hover { border-color: #647f6d; background: #17211a; }
 .portal-switch svg { width: 13px; height: 13px; }

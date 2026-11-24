@@ -6,7 +6,8 @@ import { useMemo } from 'react'
 import useSWR from 'swr'
 import { Activity, AlertCircle, BarChart3, Building2, Camera, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, ClipboardList, Coffee, Cpu, FileClock, Gauge, LayoutDashboard, LifeBuoy, Network, Settings2, Shield, Users, Boxes, Store, Bell, ArrowUpRight, LogOut, LockKeyhole } from 'lucide-react'
 import { usePortalData, roleCanAccess } from '@/services/portal-data'
-import { isDemoProvider } from '@/services/config'
+import { isApiConfigured, isDemoProvider } from '@/services/config'
+import { useBackendReadiness } from '@/services/portal-hooks'
 import { signOutOfPortal } from '@/services/portal-auth'
 import { fetchBusinessWorkspace } from '@/services/business-api'
 
@@ -64,6 +65,16 @@ function PortalBrand({ business = false }: { business?: boolean }) {
   </Link>
 }
 
+function BackendStatus() {
+  const { data, error, isLoading } = useBackendReadiness()
+  const [state, label] = isDemoProvider() ? ['demo', 'Demo data · API not used']
+    : !isApiConfigured() ? ['error', 'API not configured']
+    : isLoading ? ['pending', 'Checking API']
+    : data?.status === 'ready' ? ['ready', 'API connected']
+    : ['error', error ? 'API unreachable' : 'API not ready']
+  return <span className="control-system-state" data-state={state} role="status"><i /> {label}</span>
+}
+
 function DevelopmentBadge() {
   return isDemoProvider() ? <span className="development-badge"><i /> DEVELOPMENT</span> : null
 }
@@ -84,12 +95,12 @@ export function ControlShell({ children }: { children: React.ReactNode }) {
       <PortalBrand />
       <div className="control-scope"><span className="scope-glyph"><Shield size={16} /></span><span><strong>Platform scope</strong><small>All customer tenants</small></span><ChevronDown size={14} /></div>
       <nav className="portal-nav" aria-label="RADA Control navigation">
-        {controlNavigation.map((group) => <section className="portal-nav-group" key={group.group}><h2>{group.group}</h2>{group.items.map(({ label, href, icon: Icon }) => <Link className={`portal-nav-link ${activePath(pathname, href) ? 'is-active' : ''}`} href={href} key={href} aria-label={label} aria-current={activePath(pathname, href) ? 'page' : undefined}><Icon aria-hidden="true" /><span>{label}</span>{label === 'Alerts & incidents' && <b className="nav-count-control">3</b>}</Link>)}</section>)}
+        {controlNavigation.map((group) => <section className="portal-nav-group" key={group.group}><h2>{group.group}</h2>{group.items.map(({ label, href, icon: Icon }) => <Link className={`portal-nav-link ${activePath(pathname, href) ? 'is-active' : ''}`} href={href} key={href} aria-label={label} aria-current={activePath(pathname, href) ? 'page' : undefined}><Icon aria-hidden="true" /><span>{label}</span>{isDemoProvider() && label === 'Alerts & incidents' && <b className="nav-count-control">3</b>}</Link>)}</section>)}
       </nav>
       <div className="portal-sidebar-foot"><div className="staff-avatar">{process.env.NODE_ENV === 'production' ? 'RA' : 'AM'}</div><span><strong>{process.env.NODE_ENV === 'production' ? 'RADA team member' : 'Alex Morgan'}</strong><small>{process.env.NODE_ENV === 'production' ? 'Internal account' : 'Development administrator'}</small></span><button className="sidebar-logout" onClick={logout} aria-label="Sign out of RADA Control"><LogOut /></button></div>
     </aside>
     <div className="portal-main-column">
-      <header className="portal-topbar control-topbar"><div className="portal-breadcrumb"><span>RADA CONTROL</span><ChevronRight /><strong>{title}</strong></div><div className="portal-top-actions"><DevelopmentBadge /><span className="control-system-state"><i /> API not connected</span>{isDemoProvider() && <Link className="portal-switch" href="/business/dashboard"><Store /> Business preview <ArrowUpRight /></Link>}</div></header>
+      <header className="portal-topbar control-topbar"><div className="portal-breadcrumb"><span>RADA CONTROL</span><ChevronRight /><strong>{title}</strong></div><div className="portal-top-actions"><DevelopmentBadge /><BackendStatus />{isDemoProvider() && <Link className="portal-switch" href="/business/dashboard"><Store /> Business preview <ArrowUpRight /></Link>}</div></header>
       <main className="portal-main" id="portal-main">{children}</main>
     </div>
   </div>
@@ -121,7 +132,7 @@ export function BusinessShell({ children }: { children: React.ReactNode }) {
     <aside className="portal-sidebar business-sidebar">
       <PortalBrand business />
       <div className="business-workspace-label">YOUR WORKSPACE</div>
-      <nav className="portal-nav business-nav" aria-label="RADA Coffee Business navigation">{visibleNavigation.map(({ label, href, icon: Icon }) => <Link className={`portal-nav-link ${activePath(pathname, href) ? 'is-active' : ''}`} href={href} key={href} aria-label={label} aria-current={activePath(pathname, href) ? 'page' : undefined}><Icon aria-hidden="true" /><span>{label}</span>{label === 'Alerts' && <b className="nav-count-business">2</b>}</Link>)}</nav>
+      <nav className="portal-nav business-nav" aria-label="RADA Coffee Business navigation">{visibleNavigation.map(({ label, href, icon: Icon }) => <Link className={`portal-nav-link ${activePath(pathname, href) ? 'is-active' : ''}`} href={href} key={href} aria-label={label} aria-current={activePath(pathname, href) ? 'page' : undefined}><Icon aria-hidden="true" /><span>{label}</span>{isDemoProvider() && label === 'Alerts' && <b className="nav-count-business">2</b>}</Link>)}</nav>
       <div className="business-help"><div className="help-icon"><CircleHelp /></div><div><strong>Need a hand?</strong><small>Our team is here to help.</small></div><Link href="mailto:support@radacoffee.example" aria-label="Contact RADA support"><ArrowUpRight /></Link></div>
       <div className="portal-sidebar-foot"><div className="staff-avatar business-avatar">{user ? `${user.firstName[0]}${user.lastName[0]}` : 'BU'}</div><span><strong>{user ? `${user.firstName} ${user.lastName}` : 'Business user'}</strong><small>{user?.role ?? 'Customer'} account</small></span><button className="sidebar-logout" onClick={logout} aria-label="Sign out of RADA Coffee Business"><LogOut /></button></div>
     </aside>
